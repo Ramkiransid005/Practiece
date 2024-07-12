@@ -3,7 +3,7 @@
   hosts: localhost
   become: yes
   vars:
-    jenkins_new_home: /var/lib/jenkins2
+    jenkins_new_home: /home/ubuntu/finans
     jenkins_new_port: 8084
     jenkins_user: jenkins
     jenkins_group: jenkins
