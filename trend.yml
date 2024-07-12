@@ -1,0 +1,101 @@
+---
+- name: Setup second Jenkins instance
+  hosts: localhost
+  become: yes
+  vars:
+    jenkins_new_home: /var/lib/jenkins2
+    jenkins_new_port: 8084
+    jenkins_user: jenkins
+    jenkins_group: jenkins
+    jenkins_service_name: jenkins2
+    
+  tasks:
+    - name: Ensure Jenkins dependencies are installed
+      apt:
+        name: "{{ item }}"
+        state: present
+        update_cache: yes
+      with_items:
+        - openjdk-11-jdk
+        - daemon
+
+    - name: Create Jenkins home directory
+      file:
+        path: "{{ jenkins_new_home }}"
+        state: directory
+        owner: "{{ jenkins_user }}"
+        group: "{{ jenkins_group }}"
+        mode: '0755'
+
+    - name: Copy Jenkins configuration and data
+      command: cp -a /var/lib/jenkins/* {{ jenkins_new_home }}/
+      ignore_errors: yes
+
+    - name: Create Jenkins systemd service file
+      copy:
+        dest: /etc/systemd/system/{{ jenkins_service_name }}.service
+        content: |
+          [Unit]
+          Description=Jenkins Continuous Integration Server
+          Documentation=http://jenkins-ci.org/
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/bin/java -Djenkins.install.runSetupWizard=false -jar /usr/share/jenkins/jenkins.war --httpPort={{ jenkins_new_port }} --prefix=/jenkins2 --webroot={{ jenkins_new_home }}/war --httpListenAddress=0.0.0.0 --jenkins-home={{ jenkins_new_home }}
+          User={{ jenkins_user }}
+          Group={{ jenkins_group }}
+          Type=simple
+          Restart=on-failure
+          RestartSec=10
+          SuccessExitStatus=143
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Enable and start the second Jenkins service
+      systemd:
+        name: "{{ jenkins_service_name }}"
+        enabled: yes
+        state: started
+    - name: Ensure Jenkins directory exists
+      file:
+       path: /home/ubuntu/finans
+       state: directory
+
+    - name: Ensure the secondary Jenkins directory exists
+      file:
+       path: /var/lib/jenkins2
+       state: directory
+
+    - name: Copy Jenkins configuration and data if it exists
+      command: cp -a /var/lib/jenkins/* /var/lib/jenkins2/
+       when: ansible_facts['os_family'] == 'Debian'
+       ignore_errors: yes
+       register: copy_jenkins_data
+
+    - name: Check for errors in copying Jenkins data
+      fail:
+       msg: "Copying Jenkins data failed: {{ copy_jenkins_data.stderr }}"
+       when: copy_jenkins_data.rc != 0 and copy_jenkins_data.stderr != "cp: cannot stat '/var/lib/jenkins/*': No such file or directory"
+
+    - name: Install dependencies
+      apt:
+       name: "{{ item }}"
+       state: present
+       with_items:
+        - git
+        - openjdk-11-jdk
+
+    - name: Download Jenkins
+      get_url:
+       url: https://get.jenkins.io/war-stable/2.319.3/jenkins.war
+       dest: /home/ubuntu/finans/jenkins.war
+
+    - name: Start Jenkins
+      command: java -jar /home/ubuntu/finans/jenkins.war
+       args:
+       chdir: /home/ubuntu/finans
+
