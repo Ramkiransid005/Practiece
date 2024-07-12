@@ -60,4 +60,42 @@
         name: "{{ jenkins_service_name }}"
         enabled: yes
         state: started
+   - name: Ensure Jenkins directory exists
+    file:
+    path: /home/ubuntu/finans
+    state: directory
+
+   - name: Ensure the secondary Jenkins directory exists
+    file:
+    path: /var/lib/jenkins2
+    state: directory
+
+- name: Copy Jenkins configuration and data if it exists
+  command: cp -a /var/lib/jenkins/* /var/lib/jenkins2/
+  when: ansible_facts['os_family'] == 'Debian'
+  ignore_errors: yes
+  register: copy_jenkins_data
+
+- name: Check for errors in copying Jenkins data
+  fail:
+    msg: "Copying Jenkins data failed: {{ copy_jenkins_data.stderr }}"
+  when: copy_jenkins_data.rc != 0 and copy_jenkins_data.stderr != "cp: cannot stat '/var/lib/jenkins/*': No such file or directory"
+
+- name: Install dependencies
+  apt:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - git
+    - openjdk-11-jdk
+
+- name: Download Jenkins
+  get_url:
+    url: https://get.jenkins.io/war-stable/2.319.3/jenkins.war
+    dest: /home/ubuntu/finans/jenkins.war
+
+- name: Start Jenkins
+  command: java -jar /home/ubuntu/finans/jenkins.war
+  args:
+    chdir: /home/ubuntu/finans
 
